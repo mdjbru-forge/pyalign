@@ -323,25 +323,36 @@ def main_consensus(args, stdout, stderr) :
                  "calculations\n")
     consensus = dict()
     profiles = dict()
+    i = 0
+    total = str(len(args.input))
     for fastaFile in args.input :
+        i += 1
+        stderr.write("Processing file " + str(i) + "/" + total + " ")
         try :
             aln = pyalign.AlignIO.read(fastaFile, "fasta")
-            aln = pyalign.ungapAln(aln)
+            stderr.write("- " str(len(aln)) + " sequences ")
+            stderr.write(".")
+            aln = pyalign.ungapAln(aln)["ungappedAln"]
+            stderr.write(".")
             k = os.path.basename(fastaFile)
             assert not k in consensus
             consensus[k] = pyalign.makeConsensus(aln)
+            stderr.write(".")
             stdout.write(">" + k + "\n")
             stdout.write(consensus[k] + "\n")
             profiles[k] = pyalign.conservationProfile(aln)
+            stderr.write(".\n")
         except ValueError :
             msg = "Problem with " + fastaFile + "\n"
             stderr.write(msg)
     keys = list(consensus.keys())
     if args.profiles is not None :
+        stderr.write("Writing profiles\n")
         with open(args.profiles, "w") as fo :
             for k in keys :
                 fo.write("\t".join([k] + [str(x) for x in profiles[k]]) + "\n")
     if args.conservation is not None :
+        stderr.write("Writing conservation values\n")
         def mean(x) :
             return sum(x) * 1. / len(x)
         with open(args.conservation, "w") as fo :
