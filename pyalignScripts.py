@@ -330,7 +330,7 @@ def main_consensus(args, stdout, stderr) :
         stderr.write("Processing file " + str(i) + "/" + total + " ")
         try :
             aln = pyalign.AlignIO.read(fastaFile, "fasta")
-            stderr.write("- " str(len(aln)) + " sequences ")
+            stderr.write("- " + str(len(aln)) + " sequences ")
             stderr.write(".")
             aln = pyalign.ungapAln(aln)["ungappedAln"]
             stderr.write(".")
