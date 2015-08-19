@@ -52,6 +52,8 @@ def makeParser() :
     sp_align.add_argument("input", metavar = "FASTA_FILE",
                           type = str, nargs = "+",
                           help = "Fasta file")
+    sp_align.add_argument("-n", "--nthreads", type = int, default = 1,
+                          help = "Number of threads to use (passed to mafft)")
     sp_align.add_argument("-o", "--outDir", metavar = "DIR", type = str,
                           help = "Output directory (default: overwrite the "
                           "input file)")
@@ -309,7 +311,7 @@ def main_align(args, stdout, stderr) :
         args.outDir = "."
     for fastaFile in args.input :
         pyalign.ungapFastaFile(fastaFile, fastaFile + ".ungap.tmp")
-        pyalign.runMafft(fastaFile + ".ungap.tmp", fastaFile + ".tmp")
+        pyalign.runMafft(fastaFile + ".ungap.tmp", fastaFile + ".tmp", args.nthreads)
         out = os.path.join(args.outDir, os.path.basename(fastaFile))
         os.rename(fastaFile + ".tmp", out)
         os.remove(fastaFile + ".ungap.tmp")
