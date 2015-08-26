@@ -128,6 +128,14 @@ def makeParser() :
                                default = 0.05,
                                help = "Maximum dissimilarity for merging and splitting"
                                "(between 0 and 1) (default: 0.05)")
+    sp_splitHclust.add_argument("-u", "--unique", type = int,
+                                help = "Maximum number of unique sequences "
+                                "allowed in the input. Files with more "
+                                "sequences will be ignored. 5000 seems to "
+                                "be a good value for 7GB RAM. Note that if "
+                                "the output dir is the current dir and the "
+                                "--keep option is not given, the input "
+                                "file will be deleted.")
     sp_splitHclust.add_argument("-o", "--outDir", metavar = "DIR", type = str,
                                help = "Output directory for splitted fasta "
                                "files (default: current directory)")
@@ -391,8 +399,13 @@ def main_splitHclust(args, stdout, stderr) :
     # Go through the input files
     if args.outDir is None :
         args.outDir = "."
+    processedFile = 0
     for fastaFile in args.input :
+        total = str(len(alnToSplit))
         if os.path.basename(fastaFile) in alnToSplit :
+            processedFile += 1
+            stderr.write("Processing file " + os.path.basename(fastaFile) +
+                         " " + str(processedFile) + "/" + total + "\n")
             # Build mapping from peptide sequences to sequence names
             seqParser = SeqIO.parse(fastaFile, "fasta")
             seqRaw = [x for x in seqParser]
@@ -402,23 +415,32 @@ def main_splitHclust(args, stdout, stderr) :
             [pep2seqNames[v].append(k) for (k, v) in seqs.iteritems()]
             # Produce merged sequences
             uniqueSeqs = list(set(seqs.values()))
-            mergedSeqs = pygenes.mergeSequences(uniqueSeqs,
-                                                maxDistance = args.dissim)
-            # Build mapping from merged sequences to original peptide sequences
-            merged2pep = collections.defaultdict(lambda : [])
-            [merged2pep[v].append(k) for (k, v) in mergedSeqs.iteritems()]
-            # Output
-            for (i, v) in enumerate(merged2pep.values()) :
-                outFile = os.path.join(args.outDir,
-                                       (os.path.basename(fastaFile) + ".split" +
-                                        str(i) + ".fa"))
-                with open(outFile, "w") as fo :
-                    for originalPep in v :
-                        for seqName in pep2seqNames[originalPep] :
-                            fo.write(">" + seqName + "\n")
-                            fo.write(originalPep + "\n")
-            if args.outDir == "." and not args.keep :
-                os.remove(fastaFile)
+            stderr.write("Working with " + str(len(uniqueSeqs)) +
+                         " unique sequences\n")
+            if (args.unique is None) or (len(uniqueSeqs) <= args.unique) :
+                mergedSeqs = pygenes.mergeSequences(uniqueSeqs,
+                                                    maxDistance = args.dissim,
+                                                    stderr = stderr)
+                # Build mapping from merged sequences to original peptide sequences
+                merged2pep = collections.defaultdict(lambda : [])
+                [merged2pep[v].append(k) for (k, v) in mergedSeqs.iteritems()]
+                # Output
+                for (i, v) in enumerate(merged2pep.values()) :
+                    outFile = os.path.join(args.outDir,
+                                           (os.path.basename(fastaFile) + ".split" +
+                                            str(i) + ".fa"))
+                    with open(outFile, "w") as fo :
+                        for originalPep in v :
+                            for seqName in pep2seqNames[originalPep] :
+                                fo.write(">" + seqName + "\n")
+                                fo.write(originalPep + "\n")
+                if args.outDir == "." and not args.keep :
+                    os.remove(fastaFile)
+            else :
+                stderr.write("Too many unique sequences! File not processed\n")
+                if args.outDir == "." and not args.keep :
+                    stderr.write("File deleted\n")
+                    os.remove(fastaFile)
         else :
             if args.outDir != "." :
                 shutil.copy(fastaFile,
