@@ -160,6 +160,9 @@ def makeParser() :
                              help = "Minimum number of sequences for "
                              "validation (after removing sequences with "
                              "--seqcons) (default: 1)")
+    sp_validate.add_argument("-N", "--N_seqs", metavar = "INT", type = int,
+                             help = "Maximum number of sequences for "
+                             "validation (in the original file)")
     sp_validate.add_argument("-c", "--conservation", metavar = "FLOAT",
                              type = float, default = 0,
                              help = "Minimum conservation score for validation "
@@ -533,16 +536,20 @@ def main_validate(args, stdout, stderr) :
         try :
             stderr.write("Processing file " + inputFile + "\n")
             aln = AlignIO.read(inputFile, "fasta")
-            seqScores = pyalign.sequenceConservation(aln)
-            seqsKept = [seq for (seq, score) in zip(aln, seqScores) if score >= args.seqcons]
-            cleanAln = MultipleSeqAlignment(seqsKept)
-            alnCons = mean(pyalign.conservationProfile(cleanAln))
-            outFile = os.path.join(args.outDir, inputFile)
-            if (len(cleanAln) >= args.n_seqs) and (alnCons >= args.conservation) :
-                with open(outFile, "w") as fo :
-                    for seq in cleanAln :
-                        fo.write(">" + seq.description + "\n")
-                        fo.write(str(seq.seq) + "\n")
+            if args.N_seqs is None or len(aln) <= args.N_seqs :
+                seqScores = pyalign.sequenceConservation(aln)
+                seqsKept = [seq for (seq, score) in zip(aln, seqScores) if score >= args.seqcons]
+                cleanAln = MultipleSeqAlignment(seqsKept)
+                alnCons = mean(pyalign.conservationProfile(cleanAln))
+                outFile = os.path.join(args.outDir, inputFile)
+                if (len(cleanAln) >= args.n_seqs) and (alnCons >= args.conservation) :
+                    with open(outFile, "w") as fo :
+                        for seq in cleanAln :
+                            fo.write(">" + seq.description + "\n")
+                            fo.write(str(seq.seq) + "\n")
+                else :
+                    if args.outDir == "." :
+                        os.remove(inputFile)
             else :
                 if args.outDir == "." :
                     os.remove(inputFile)

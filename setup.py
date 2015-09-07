@@ -5,7 +5,7 @@
 from setuptools import setup, find_packages
 
 setup(name = "pyalign",
-      version = "0.0.3",
+      version = "0.0.4",
       py_modules = ["pyalign",
                     "pyalignScripts"],
       install_requires = ["biopython",
