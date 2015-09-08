@@ -702,3 +702,56 @@ def callSNP(alnNtFile, geneToRecordMapping) :
     return SNPdata
             
             
+### ** mapSequenceToAln(directory)
+
+def mapSequenceToAln(directory) :
+    """Build a dictionary mapping sequence name to alignment names for all
+    alignment files in a directory
+
+    Args:
+        directory (str): Path to the directory to explore
+
+    Returns:
+        dict: Mapping (geneId, alnFilename)
+    """
+    o = dict()
+    l = os.listdir(directory)
+    for f in l :
+        aln = AlignIO.read(f, "fasta")
+        for g in aln :
+            o[g.description] = f
+    return o
+
+### ** splitGeneTable(geneTableFile, mapSeqAln, outDir)
+
+def splitGeneTable(geneTableFile, mapSeqAln, outDir) :
+    """Split a large gene table file into smaller files corresponding to the gene
+    information for individual alignments
+
+    Args:
+        geneTableFile (str): Gene table filename
+        mapSeqAln (dict): Mapping between geneId and alignment, output from
+          mapSequenceAln
+        outDir (str): Path to the output directory
+
+    """
+    alnStarted = dict()
+    with open(geneTableFile, "r") as fi :
+        headerLine = fi.next()
+        headers = headerLine.strip().split("\t")
+        geneIdIndex = headers.index("geneId")
+        for l in fi :
+            if l.strip() != "" :
+                geneId = l.strip().split("\t")[geneIdIndex]
+                aln = mapSeqAln.get(geneId, False)
+                if aln :
+                    if not alnStarted.get(aln, False) :
+                        alnStarted[aln] = True
+                        fo = open(os.path.join(outDir, aln + ".geneTable"), "w")
+                        fo.write(headerLine)
+                        fo.write(l)
+                        fo.close()
+                    else :
+                        fo = open(os.path.join(outDir, aln + ".geneTable"), "a")
+                        fo.write(l)
+                        fo.close()
