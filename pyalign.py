@@ -702,21 +702,19 @@ def callSNP(alnNtFile, geneToRecordMapping) :
     return SNPdata
             
             
-### ** mapSequenceToAln(directory)
+### ** mapSequenceToAln(files)
 
-def mapSequenceToAln(directory) :
-    """Build a dictionary mapping sequence name to alignment names for all
-    alignment files in a directory
+def mapSequenceToAln(files) :
+    """Build a dictionary mapping sequence name to alignment file names
 
     Args:
-        directory (str): Path to the directory to explore
+        files (list of str): List of filenames
 
     Returns:
         dict: Mapping (geneId, alnFilename)
     """
     o = dict()
-    l = os.listdir(directory)
-    for f in l :
+    for f in files :
         aln = AlignIO.read(f, "fasta")
         for g in aln :
             o[g.description] = f

@@ -172,6 +172,19 @@ def makeParser() :
                              help = "Output directory for splitted fasta "
                              "files (default: current directory)")
     sp_validate.set_defaults(action = "validate")
+    # splitGeneTable
+    sp_splitGeneTable = subparsers.add_parser("splitGeneTable",
+                                              help = "Split a large gene table "
+                             "into subsets matching individual alignments")
+    sp_splitGeneTable.add_argument("geneTable", metavar = "GENE_TABLE", type = str,
+                             help = "Gene table")
+    sp_splitGeneTable.add_argument("alnFiles", metavar = "FASTA_FILE",
+                                   type = str, nargs = "+",
+                                   help = "Alignment files in fasta format")
+    sp_splitGeneTable.add_argument("-o", "--outDir", metavar = "DIR", type = str,
+                             help = "Output directory for splitted gene table "
+                             "files (default: current directory)")
+    sp_splitGeneTable.set_defaults(action = "splitGeneTable")
     # phaseNt
     sp_phaseNt = subparsers.add_parser("phaseNt",
                                         help = "Convert protein alignments to "
@@ -180,7 +193,11 @@ def makeParser() :
                              nargs = "+",
                              help = "Alignment files in fasta format")
     sp_phaseNt.add_argument("geneTable", metavar = "GENE_TABLE", type = str,
-                             help = "Gene table")
+                             help = "Gene table. If a directory is given instead "
+                            "of a file name, the "
+                            "files within this directory will be considered as "
+                            "subset of gene tables made with \"pyalign "
+                            "splitGeneTable\"")
     sp_phaseNt.add_argument("-o", "--outDir", metavar = "DIR", type = str,
                              help = "Output directory for splitted fasta "
                              "files (default: current directory)")
@@ -212,7 +229,7 @@ def makeParser() :
                           help = "Remove sequences with at least one gap "
                           "whose proportion is less than PROPORTION")
     sp_ungap.add_argument("-o", "--outDir", metavar = "DIR", type = str,
-                          help = "Output directory for splitted fasta "
+                          help = "Output directory for ungapped fasta "
                           "files (default: current directory)")
     sp_ungap.add_argument("--syncNtDir", metavar = "DIR", type = str,
                           help = "Synchronize the ungapped alignments with "
@@ -306,6 +323,7 @@ def main(args = None, stdout = None, stderr = None) :
     dispatch["consensus"] = main_consensus
     dispatch["splitHclust"] = main_splitHclust
     dispatch["validate"] = main_validate
+    dispatch["splitGeneTable"] = main_splitGeneTable
     dispatch["phaseNt"] = main_phaseNt
     dispatch["ungap"] = main_ungap
     dispatch["origin"] = main_origin
@@ -450,6 +468,17 @@ def main_splitHclust(args, stdout, stderr) :
                             os.path.join(args.outDir,
                                          os.path.basename(fastaFile)))
 
+### ** Main splitGeneTable
+
+def main_splitGeneTable(args, stdout, stderr) :
+    if args.outDir is None :
+        args.outDir = "."
+    # Build the mapping between sequences and alignments
+    seqAlnMapping = pyalign.mapSequenceToAln(args.alnFiles)
+    # Split the gene table
+    pyalign.splitGeneTable(args.geneTable, seqAlnMapping,
+                           args.outDir)
+
 ### ** Main phaseNt
 
 def main_phaseNtOld(args, stdout, stderr) :
@@ -475,15 +504,26 @@ def main_phaseNtOld(args, stdout, stderr) :
 def main_phaseNt(args, stdout, stderr) :
     if args.outDir is None :
         args.outDir = "."
-    # Load gene table
-    geneTable = pygenes.GeneTable()
-    geneTable.loadTable(args.geneTable)
-    # Go through the alignments
-    for alnFile in args.alnFiles :
-        stderr.write("Processing alignment " + os.path.basename(alnFile) +
-                     "\n")
-        outFile = os.path.join(args.outDir, os.path.basename(alnFile) + ".alnNt")
-        pyalign.phaseNtDetailledFast(alnFile, geneTable, outFile)
+    if not os.path.isdir(args.geneTable) :
+        # Load gene table
+        geneTable = pygenes.GeneTable()
+        geneTable.loadTable(args.geneTable)
+        # Go through the alignments
+        for alnFile in args.alnFiles :
+            stderr.write("Processing alignment " + os.path.basename(alnFile) +
+                         "\n")
+            outFile = os.path.join(args.outDir, os.path.basename(alnFile) + ".alnNt")
+            pyalign.phaseNtDetailledFast(alnFile, geneTable, outFile)
+    else :
+        # Go through the alignments
+        for alnFile in args.alnFiles :
+            stderr.write("Processing alignment " + os.path.basename(alnFile) +
+                         "\n")
+            outFile = os.path.join(args.outDir, os.path.basename(alnFile) + ".alnNt")
+            geneTableFile = os.path.join(args.geneTable, os.path.basename(alnFile) + ".geneTable")
+            geneTable = pygenes.GeneTable()
+            geneTable.loadTable(geneTableFile)
+            pyalign.phaseNtDetailledFast(alnFile, geneTable, outFile)
 
 ### ** Main ungap
 
