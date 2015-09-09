@@ -245,7 +245,11 @@ def makeParser() :
                                       "the files for which one or several "
                                       "records have multiple entries")
     sp_origin.add_argument("geneTable", metavar = "GENE_TABLE", type = str,
-                           help = "Gene table file")
+                           help = "Gene table file.  If a directory is given instead "
+                            "of a file name, the "
+                            "files within this directory will be considered as "
+                            "subset of gene tables made with \"pyalign "
+                            "splitGeneTable\"")
     sp_origin.add_argument("alnFiles", metavar = "FASTA_FILE", type = str,
                            nargs = "+",
                            help = "Alignment files in fasta format")
@@ -481,6 +485,8 @@ def main_splitGeneTable(args, stdout, stderr) :
 
 ### ** Main phaseNt
 
+### *** Old
+
 def main_phaseNtOld(args, stdout, stderr) :
     if args.outDir is None :
         args.outDir = "."
@@ -501,6 +507,8 @@ def main_phaseNtOld(args, stdout, stderr) :
             outFile = os.path.join(args.outDir, os.path.basename(alnFile) + ".alnNt")
             alnNt.writeCompactFile(outFile)
 
+### *** Current
+            
 def main_phaseNt(args, stdout, stderr) :
     if args.outDir is None :
         args.outDir = "."
@@ -599,18 +607,34 @@ def main_validate(args, stdout, stderr) :
 ### ** Main origin
 
 def main_origin(args, stdout, stderr) :
-    stderr.write("Loading gene table\n")
-    geneTable = pygenes.GeneTable()
-    geneTable.loadTable(args.geneTable)
-    for inputFile in args.alnFiles :
-        aln = AlignIO.read(inputFile, "fasta")
-        origins = collections.defaultdict(lambda : [])
-        for seq in aln :
-            origins[geneTable.geneId(seq.description).recordId].append(seq.description)
-        multipleOrigins = [(x,y) for (x,y) in origins.items() if len(y) > 1]
-        for (x,y) in multipleOrigins :
-            stdout.write(inputFile + "\t" + str(x) + "\t" + str(len(y)) + "\t" +
-                         ";".join(y) + "\n")
+    if not os.path.isdir(args.geneTable) :
+        stderr.write("Loading gene table\n")
+        geneTable = pygenes.GeneTable()
+        geneTable.loadTable(args.geneTable)
+        for inputFile in args.alnFiles :
+            aln = AlignIO.read(inputFile, "fasta")
+            origins = collections.defaultdict(lambda : [])
+            for seq in aln :
+                origins[geneTable.geneId(seq.description).recordId].append(seq.description)
+            multipleOrigins = [(x,y) for (x,y) in origins.items() if len(y) > 1]
+            for (x,y) in multipleOrigins :
+                stdout.write(inputFile + "\t" + str(x) + "\t" + str(len(y)) + "\t" +
+                             ";".join(y) + "\n")
+    else :
+        n = str(len(args.alnFiles))
+        for (i, inputFile) in enumerate(args.alnFiles) :
+            stderr.write("Processing file " + str(i+1) + "/" + n + "\n")
+            geneTableFile = os.path.join(args.geneTable, os.path.basename(inputFile) + ".geneTable")
+            geneTable = pygenes.GeneTable()
+            geneTable.loadTable(geneTableFile)
+            aln = AlignIO.read(inputFile, "fasta")
+            origins = collections.defaultdict(lambda : [])
+            for seq in aln :
+                origins[geneTable.geneId(seq.description).recordId].append(seq.description)
+            multipleOrigins = [(x,y) for (x,y) in origins.items() if len(y) > 1]
+            for (x,y) in multipleOrigins :
+                stdout.write(inputFile + "\t" + str(x) + "\t" + str(len(y)) + "\t" +
+                             ";".join(y) + "\n")
 
 ### ** Main compile
 
