@@ -333,7 +333,7 @@ def main(args = None, stdout = None, stderr = None) :
     dispatch["origin"] = main_origin
     dispatch["compile"] = main_compile
     dispatch["scan"] = main_scan
-    dispatch["callSNP"] = main_callSNP
+    dispatch["callSNP"] = main_callSNP_light
     dispatch["SNPtable"] = main_SNPtable
     dispatch[args.action](args, stdout, stderr)
 
@@ -521,7 +521,7 @@ def main_phaseNt(args, stdout, stderr) :
             stderr.write("Processing alignment " + os.path.basename(alnFile) +
                          "\n")
             outFile = os.path.join(args.outDir, os.path.basename(alnFile) + ".alnNt")
-            pyalign.phaseNtDetailledFast(alnFile, geneTable, outFile)
+            pyalign.phaseNtDetailledFastLight(alnFile, geneTable, outFile)
     else :
         # Go through the alignments
         for alnFile in args.alnFiles :
@@ -531,7 +531,7 @@ def main_phaseNt(args, stdout, stderr) :
             geneTableFile = os.path.join(args.geneTable, os.path.basename(alnFile) + ".geneTable")
             geneTable = pygenes.GeneTable()
             geneTable.loadTable(geneTableFile)
-            pyalign.phaseNtDetailledFast(alnFile, geneTable, outFile)
+            pyalign.phaseNtDetailledFastLight(alnFile, geneTable, outFile)
 
 ### ** Main ungap
 
@@ -715,6 +715,42 @@ def main_callSNP(args, stdout, stderr) :
             o += [SNP["genotypes"].get(x, "NA") for x in records]
             o += [str(SNP["genomicPositions"].get(x, "NA")) for x in records]
             o += [str(SNP["genomicStrands"].get(x, "NA")) for x in records]
+            stdout.write("\t".join(o) + "\n")
+
+def main_callSNP_light(args, stdout, stderr) :
+    # Build the gene to record mapping
+    gene2recordMapping = dict()
+    with open(args.gene2record, "r") as fi :
+        for line in fi :
+            e = line.strip().split("\t")
+            gene2recordMapping[e[0]]= e[1]
+    records = set(gene2recordMapping.values())
+    if False :
+        # First pass through the alignment files to get the record names
+        # Not needed if we assume all the records are in gene2recordMapping
+        # already
+        records = set([])
+        for f in args.alnFiles :
+            stderr.write("First pass (record names) - processing file " + f + "\n")
+            with open(f, "r") as fi :
+                for line in fi :
+                    if line.startswith(">") :
+                        records.add(gene2recordMapping[line.strip()[1:]])
+        stderr.write(str(len(records)) + " records found\n")
+    records = list(records)
+    # Second pass to process each alignment
+    headerBase = ["SNPid", "cluster", "clusterPos", "codonPos", "base", "alt",
+                  "nBase", "nAlt", "nonSyn", "multipleRecordEntries"]
+    headerGenotypes = ["geno_" + x for x in records]
+    headers = headerBase + headerGenotypes
+    stdout.write("\t".join(headers) + "\n")
+    n = str(len(args.alnFiles))
+    for (i, f) in enumerate(args.alnFiles) :
+        stderr.write("SNP calling - processing file (" + str(i) + "/" + n + ") " + f + "\n")
+        SNPdata = pyalign.callSNP_light(f, gene2recordMapping)
+        for SNP in SNPdata :
+            o = [str(SNP[x]) for x in headerBase]
+            o += [SNP["genotypes"].get(x, "NA") for x in records]
             stdout.write("\t".join(o) + "\n")
 
 ### ** Main SNP table

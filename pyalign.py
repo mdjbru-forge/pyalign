@@ -531,6 +531,47 @@ def phaseNtDetailledFast(inputAlnFastaFile, geneTable, outputFile) :
     fo.close()
     return True
     
+### ** phaseNtDetailledFastLight(inputAlnFastaFile, geneTable, outputFile)
+
+def phaseNtDetailledFastLight(inputAlnFastaFile, geneTable, outputFile) :
+    """Convert an input protein alignment to a detailled nucleotide
+    alignment file
+
+    Args:
+        inputAlnFastaFile (str): Alignment file
+        geneTable (GeneTable from pygenes): Gene table containing the 
+          information for the genes whose geneId is in the alignment
+        outputFile (str): Output file name
+
+    Returns:
+        bool: False if no alignment was found, True if it was found
+    """
+    try :
+        aln = AlignIO.read(inputAlnFastaFile, "fasta")
+    except ValueError :
+        return False
+    fo = open(outputFile, "w")
+    for row in aln :
+        geneId = row.description
+        pepAln = str(row.seq)
+        geneEntry = geneTable.geneId(geneId)
+        ntSeq = geneEntry.codingSeq
+        #recordPos = pygenes.locStr2int(geneEntry.location, ignoreFuzzy = True)
+        #assert len(recordPos) == len(ntSeq)
+        fo.write(">" + geneId + "\n")
+        gaps = 0
+        for (i, aa) in enumerate(pepAln) :
+            line = [str(i), aa]
+            if aa == "-" :
+                gaps += 1
+            else :
+                j = (i - gaps) * 3
+                line += [ntSeq[j:(j+3)]]
+                #line += [",".join([str(x[0]) for x in recordPos[j:(j+3)]])]
+                #line += ["".join([x[1] for x in recordPos[j:(j+3)]])]
+            fo.write("\t".join(line) + "\n")
+    fo.close()
+    return True
 
 ### ** prot2nucOld(aln, geneTable)
 
@@ -639,6 +680,61 @@ def loadAlnFromDetailledNtAln(alnNtFile) :
     nucAln = Align.MultipleSeqAlignment(nucSeqs)
     return (nucAln, protAln, genomicPosList, strandList)
 
+### ** loadAlnFromDetailledNtAln_light(alnNtFile)
+
+def loadAlnFromDetailledNtAln_light(alnNtFile) :
+    """Load the sequence data from a detailled nucleotide alignment file into
+    one protein alignment and one nucleotide alignment
+
+    Args:
+        alnFile (str): Path to an alignment file
+
+    Returns:
+        tuple: A tuple (nucleotide alignment, protein alignment)
+
+    """
+    with open(alnNtFile, "r") as fi :
+        protSeqs = []
+        nucSeqs = []
+        protSeq = ""
+        nucSeq = ""
+        currentGeneId = ""
+        for line in fi :
+            if line.startswith(">") :
+                if currentGeneId != "" :
+                    protSeqs.append(SeqRecord.SeqRecord(Seq.Seq(protSeq,
+                                                  alphabet = Alphabet.generic_protein),
+                                    id = currentGeneId,
+                                    description = currentGeneId))
+                    nucSeqs.append(SeqRecord.SeqRecord(Seq.Seq(nucSeq,
+                                                 alphabet = Alphabet.generic_dna),
+                                   id = currentGeneId,
+                                   description = currentGeneId))
+                currentGeneId = line.strip()[1:]
+                protSeq = ""
+                nucSeq = ""
+            else :
+                elements = line.strip().split("\t")
+                if len(elements) > 1 :
+                    if elements[1] == "-" :
+                        protSeq += "-"
+                        nucSeq += "---"
+                    else :
+                        protSeq += elements[1]
+                        nucSeq += elements[2]
+        protSeqs.append(SeqRecord.SeqRecord(Seq.Seq(protSeq,
+                                      alphabet = Alphabet.generic_protein),
+                        id = currentGeneId,
+                        description = currentGeneId))
+        nucSeqs.append(SeqRecord.SeqRecord(Seq.Seq(nucSeq,
+                                     alphabet = Alphabet.generic_dna),
+                       id = currentGeneId,
+                       description = currentGeneId))
+    # Build the MultipleSeqAlignment objects (prot and nt)
+    protAln = Align.MultipleSeqAlignment(protSeqs)
+    nucAln = Align.MultipleSeqAlignment(nucSeqs)
+    return (nucAln, protAln)
+
 ### ** callSNP(alnNtFile, geneToRecordMapping)
 
 def callSNP(alnNtFile, geneToRecordMapping) :
@@ -701,7 +797,58 @@ def callSNP(alnNtFile, geneToRecordMapping) :
             SNPdata.append(SNP)
     return SNPdata
             
-            
+### ** callSNP_light(alnNtFile, geneToRecordMapping)
+
+def callSNP_light(alnNtFile, geneToRecordMapping) :
+    """Call SNP in a detailled nucleotide alignment file and return the 
+    SNPdata as a list.
+    NOTE: If a record has several genes involved in the alignment, its genotype
+    string is a concatenation of the genotypes.
+
+    Args:
+        alnNtFile (str): Path to an alignment file
+        geneToRecordMapping (dict): Mapping between gene id and record id
+
+    Returns:
+        list: List of SNP data dictionaries
+    
+    """
+    clusterName = os.path.basename(alnNtFile)
+    SNPdata = list()
+    # Load the alignments
+    (nucAln, protAln) = loadAlnFromDetailledNtAln_light(alnNtFile)
+    # Go through the nt positions to detect SNPs
+    for i in xrange(nucAln.get_alignment_length()) :
+        nucPosComp = list(collections.Counter(nucAln[:,i]).items())
+        multipleOccurrenceOneRecord = False
+        if len(nucPosComp) > 1 :
+            SNP = dict()
+            nucPosComp = sorted(nucPosComp, key = lambda x: x[1], reverse = True)
+            SNP["clusterPos"] = int(i / 3)
+            SNP["codonPos"] = i % 3
+            SNP["base"] = nucPosComp[0][0]
+            SNP["nBase"] = nucPosComp[0][1]
+            SNP["alt"] = "".join([x[0] for x in nucPosComp[1:]])
+            SNP["nAlt"] = sum([x[1] for x in nucPosComp[1:]])
+            protPosComp = list(collections.Counter(
+                protAln[:, SNP["clusterPos"]]).items())
+            SNP["nonSyn"] = int(len(protPosComp) > 1)
+            SNP["cluster"] = clusterName
+            SNP["SNPid"] = "-".join([clusterName, str(SNP["clusterPos"]),
+                                     str(SNP["codonPos"])])
+            genotypes = dict()
+            for j in range(len(nucAln)) :
+                recordId = geneToRecordMapping[nucAln[j].description]
+                if recordId in genotypes.keys() :
+                    multipleOccurrenceOneRecord = True
+                    genotypes[recordId] += "/" + nucAln[j, i]
+                else :
+                    genotypes[recordId] = nucAln[j, i]
+            SNP["genotypes"] = dict(genotypes)
+            SNP["multipleRecordEntries"] = int(multipleOccurrenceOneRecord)
+            SNPdata.append(SNP)
+    return SNPdata
+                        
 ### ** mapSequenceToAln(files)
 
 def mapSequenceToAln(files) :
@@ -711,13 +858,14 @@ def mapSequenceToAln(files) :
         files (list of str): List of filenames
 
     Returns:
-        dict: Mapping (geneId, alnFilename)
+        dict: Mapping (geneId, alnFilename) where alnFilename is the basename 
+          of the file
     """
     o = dict()
     for f in files :
         aln = AlignIO.read(f, "fasta")
         for g in aln :
-            o[g.description] = f
+            o[g.description] = os.path.basename(f)
     return o
 
 ### ** splitGeneTable(geneTableFile, mapSeqAln, outDir)
