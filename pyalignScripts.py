@@ -24,8 +24,11 @@ DESCRIPTION_CONSENSUS = ("Determine consensus sequences from alignments in "
 
 import sys
 import os
+import subprocess
 import argparse
+import math
 import hashlib
+import random
 import collections
 import shutil
 from Bio import SeqIO
@@ -286,6 +289,10 @@ def makeParser() :
     sp_snp.add_argument("alnFiles", metavar = "ALNFILE", type = str,
                         nargs = "+",
                         help = "Detailled nucleotide alignment file(s)")
+    sp_snp.add_argument("-n", "--nCores", metavar = "INT", type = int,
+                            help = "Number of cores used", default = 1)
+    sp_snp.add_argument("-o", "--out", metavar = "FILE", type = str,
+                         help = "Output file")
     sp_snp.set_defaults(action = "callSNP")
     # SNPtable
     sp_SNPtable = subparsers.add_parser("SNPtable",
@@ -718,13 +725,6 @@ def main_callSNP(args, stdout, stderr) :
             stdout.write("\t".join(o) + "\n")
 
 def main_callSNP_light(args, stdout, stderr) :
-    # Build the gene to record mapping
-    gene2recordMapping = dict()
-    with open(args.gene2record, "r") as fi :
-        for line in fi :
-            e = line.strip().split("\t")
-            gene2recordMapping[e[0]]= e[1]
-    records = set(gene2recordMapping.values())
     if False :
         # First pass through the alignment files to get the record names
         # Not needed if we assume all the records are in gene2recordMapping
@@ -737,22 +737,53 @@ def main_callSNP_light(args, stdout, stderr) :
                     if line.startswith(">") :
                         records.add(gene2recordMapping[line.strip()[1:]])
         stderr.write(str(len(records)) + " records found\n")
-    records = list(records)
-    # Second pass to process each alignment
-    headerBase = ["SNPid", "cluster", "clusterPos", "codonPos", "base", "alt",
-                  "nBase", "nAlt", "nonSyn", "multipleRecordEntries"]
-    headerGenotypes = ["geno_" + x for x in records]
-    headers = headerBase + headerGenotypes
-    stdout.write("\t".join(headers) + "\n")
-    n = str(len(args.alnFiles))
-    for (i, f) in enumerate(args.alnFiles) :
-        stderr.write("SNP calling - processing file (" + str(i) + "/" + n + ") " + f + "\n")
-        SNPdata = pyalign.callSNP_light(f, gene2recordMapping)
-        for SNP in SNPdata :
-            o = [str(SNP[x]) for x in headerBase]
-            o += [SNP["genotypes"].get(x, "NA") for x in records]
-            stdout.write("\t".join(o) + "\n")
-
+        records = list(records)
+    if args.nCores == 1 :
+        # Build the gene to record mapping
+        gene2recordMapping = dict()
+        with open(args.gene2record, "r") as fi :
+            for line in fi :
+                e = line.strip().split("\t")
+                gene2recordMapping[e[0]]= e[1]
+        records = sorted(list(set(gene2recordMapping.values())))
+        with open(args.out, "w") as fo :
+            # Second pass to process each alignment
+            headerBase = ["SNPid", "cluster", "clusterPos", "codonPos", "base", "alt",
+                          "nBase", "nAlt", "nonSyn", "multipleRecordEntries"]
+            headerGenotypes = ["geno_" + x for x in records]
+            headers = headerBase + headerGenotypes
+            fo.write("\t".join(headers) + "\n")
+            n = str(len(args.alnFiles))
+            for (i, f) in enumerate(args.alnFiles) :
+                stderr.write("SNP calling - processing file (" + str(i + 1) + "/" + n + ") " + f + "\n")
+                SNPdata = pyalign.callSNP_light(f, gene2recordMapping)
+                for SNP in SNPdata :
+                    o = [str(SNP[x]) for x in headerBase]
+                    o += [SNP["genotypes"].get(x, "NA") for x in records]
+                    fo.write("\t".join(o) + "\n")
+    else :
+        # Prepare the input subsets
+        inputFiles = args.alnFiles + []
+        random.shuffle(inputFiles)
+        stepFile = int(math.ceil(len(inputFiles) * 1. / args.nCores))
+        p = list()
+        for i in range(args.nCores) :
+            startFile = i * stepFile
+            endFile = min((i + 1) * stepFile, len(inputFiles))
+            subsetFiles = inputFiles[startFile:endFile]
+            cmd = ["pyalign", "callSNP", "-n", "1",
+                   "-o", "pyalign.tmp.callSNP." + str(i),
+                   args.gene2record]
+            cmd += subsetFiles
+            p.append(subprocess.Popen(cmd))
+        for k in p :
+            k.wait()
+        # Merge the output files
+        os.system("mv pyalign.tmp.callSNP.0 " + args.out)
+        for i in range(1, args.nCores) :
+            os.system("tail -n+2 pyalign.tmp.callSNP." + str(i) + " >> " + args.out)
+            os.system("rm -f pyalign.tmp.callSNP." + str(i))
+            
 ### ** Main SNP table
 
 def main_SNPtable(args, stdout, stderr) :
