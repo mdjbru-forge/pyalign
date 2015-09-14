@@ -647,9 +647,11 @@ def main_origin(args, stdout, stderr) :
 
 def main_compile(args, stdout, stderr) :
     stderr.write("Loading gene table\n")
-    geneTable = pygenes.GeneTable()
-    geneTable.loadTable(args.geneTable)
-    for inputFile in args.alnFiles :
+    geneTable = pygenes.loadLightGeneTable(args.geneTable, args.info)
+    stderr.write("Processing files\n")
+    t = str(len(args.alnFiles))
+    for (i, inputFile) in enumerate(args.alnFiles) :
+        stderr.write("Processing file " + str(i + 1) + "/" + t + "\n")
         try :
             aln = AlignIO.read(inputFile, "fasta")
             loaded = True
@@ -657,9 +659,8 @@ def main_compile(args, stdout, stderr) :
             loaded = False
         if loaded :
             for seq in aln :
-                gene = geneTable.geneId(seq.description)._asdict()
-                out = [gene[x] for x in args.info]
-                stdout.write("\t".join([os.path.basename(inputFile)] + out) + "\n")
+                gene = geneTable[seq.description]
+                stdout.write("\t".join([os.path.basename(inputFile)] + gene) + "\n")
 
 ### ** Main scan
 
