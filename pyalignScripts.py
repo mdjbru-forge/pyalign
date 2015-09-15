@@ -278,6 +278,20 @@ def makeParser() :
                          nargs = "+",
                          help = "Alignment files in fasta format")
     sp_scan.set_defaults(action = "scan")
+    # Presence/absence matrix
+    sp_family = subparsers.add_parser("family",
+                                      help = "Build the family "
+                                      "presence/absence matrix")
+    sp_family.add_argument("gene2record", metavar = "GENE2RECORD", type = str,
+                        help = "Tabular file containing the mapping between "
+                        "gene id and record id (e.g. produced by pygenes "
+                        "extract)")
+    sp_family.add_argument("alnFiles", metavar = "ALNFILE", type = str,
+                           nargs = "+",
+                           help = "Detailled nucleotide alignment file(s)")
+    sp_family.add_argument("-o", "--out", metavar = "FILE", type = str,
+                           help = "Output file")
+    sp_family.set_defaults(action = "family")
     # SNP calling
     sp_snp = subparsers.add_parser("callSNP",
                                    help = "Call SNPs from detailled nucleotide "
@@ -340,6 +354,7 @@ def main(args = None, stdout = None, stderr = None) :
     dispatch["origin"] = main_origin
     dispatch["compile"] = main_compile
     dispatch["scan"] = main_scan
+    dispatch["family"] = main_family
     dispatch["callSNP"] = main_callSNP_light
     dispatch["SNPtable"] = main_SNPtable
     dispatch[args.action](args, stdout, stderr)
@@ -683,6 +698,33 @@ def main_scan(args, stdout, stderr) :
                 stdout.write("\t".join([os.path.basename(inputFile)] +
                                        [str(out[x]) for x in characters]) + "\n")
 
+### ** Main family
+
+def main_family(args, stdout, stderr) :
+    gene2recordMapping = dict()
+    with open(args.gene2record, "r") as fi :
+        for line in fi :
+            e = line.strip().split("\t")
+            gene2recordMapping[e[0]]= e[1]
+    records = sorted(list(set(gene2recordMapping.values())))
+    with open(args.out, "w") as fo :
+        # Second pass to process each alignment
+        headerBase = ["cluster"]
+        headerRecords = records + []
+        headers = headerBase + headerRecords
+        fo.write("\t".join(headers) + "\n")
+        n = str(len(args.alnFiles))
+        for (i, f) in enumerate(args.alnFiles) :
+            stderr.write("Gene family matrix - processing file (" +
+                         str(i + 1) + "/" + n + ") " + f + "\n")
+            with open(f, "r") as fi :
+                recordsAln = set()
+                for l in fi :
+                    if l.startswith(">") :
+                        recordsAln.add(gene2recordMapping[l.strip().strip(">")])
+            fo.write("\t".join([os.path.basename(f)] +
+                               [str(int(x in recordsAln)) for x in records]) + "\n")
+    
 ### ** Main call SNP
 
 def main_callSNP(args, stdout, stderr) :
